@@ -1,0 +1,992 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/printfromai/core/internal/models"
+	"github.com/printfromai/core/web/templates/layout"
+)
+
+// ProductIndex handles the HTMX conditional rendering.
+templ ProductIndex(product models.Product, variantsJSON string, isHTMX bool) {
+	if isHTMX {
+		@ProductContent(product)
+	} else {
+		@layout.Base(product.MetaTitle) {
+			@ProductContent(product)
+		}
+	}
+}
+
+// ProductContent is the UI for the individual product page.
+templ ProductContent(product models.Product) {
+	<!-- Inject JSON-LD Schema for Google & AI Overviews -->
+	<script type="application/ld+json">
+		@templ.Raw(product.JSONSchema)
+	</script>
+
+	<!-- templ.JSONScript safely passes Go structs to JS -->
+	@templ.JSONScript("variants-data", product.Variants)
+
+	<!-- Image Zoom Modal (Hidden by default) -->
+	<div id="image-zoom-modal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/80 backdrop-blur-sm opacity-0 transition-opacity duration-300" aria-modal="true" role="dialog" aria-labelledby="zoomed-image-label">
+		<button type="button" onclick="closeImageModal()" class="absolute top-6 right-6 text-white/70 hover:text-white bg-black/50 hover:bg-black/80 rounded-full p-2 transition-colors outline-none cursor-pointer" aria-label="Close image zoom">
+			<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+		</button>
+		<span id="zoomed-image-label" class="sr-only">Zoomed Product Image</span>
+		<img id="zoomed-image" src="" alt="Zoomed Preview" class="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl" />
+	</div>
+
+<!-- Hidden File Inputs for real uploading -->
+<input type="file" id="front-file-input" name="front_file" form="checkout-form" class="hidden" accept="image/*,.pdf" onchange="handleFileUpload(event, 'front')" aria-hidden="true" />
+<input type="file" id="back-file-input" name="back_file" form="checkout-form" class="hidden" accept="image/*,.pdf" onchange="handleFileUpload(event, 'back')" aria-hidden="true" />
+<input type="file" id="additional-file-input" name="additional_file" form="checkout-form" class="hidden" accept="image/*,.pdf,.zip" onchange="handleFileUpload(event, 'additional')" aria-hidden="true" />
+
+	<div class="flex flex-col w-full p-4 md:p-8 max-w-7xl mx-auto transition-colors duration-300 overflow-y-auto pb-64 relative">
+		
+		<!-- Accessible Breadcrumb Navigation -->
+		<nav aria-label="Breadcrumb" class="mb-4 md:mb-6">
+			<ol class="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
+				<li>
+					<a href="/" hx-get="/" hx-target="#main-content" hx-push-url="true" class="hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors outline-none flex items-center gap-1.5" aria-label="Go to Home">
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+						Home
+					</a>
+				</li>
+				<li><span aria-hidden="true" class="text-gray-300 dark:text-gray-600">/</span></li>
+				<li>
+					<a href="/products" hx-get="/products" hx-target="#main-content" hx-push-url="true" class="hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors outline-none" aria-label="Go to Products">
+						Products
+					</a>
+				</li>
+				<li><span aria-hidden="true" class="text-gray-300 dark:text-gray-600">/</span></li>
+				<li class="text-gray-900 dark:text-gray-100 font-medium" aria-current="page">{ product.Title }</li>
+			</ol>
+		</nav>
+
+		<!-- Main Product Grid -->
+		<div class="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 mb-12 items-start">
+			
+			<!-- LEFT COLUMN: Visuals & Variant Specs (STICKY) -->
+			<div class="flex flex-col w-full lg:sticky lg:top-8 z-10 transition-all">
+				
+				<!-- Horizontal Layout for Thumbnails & Main Image -->
+				<div class="flex flex-row gap-3 h-full">
+					
+					<!-- Thumbnails Container (Vertical Column) -->
+					<div id="thumbnail-container" class="flex flex-col gap-3 overflow-y-auto max-h-[600px] hide-scrollbar w-16 md:w-20 flex-shrink-0 pt-1" aria-label="Product image thumbnails">
+						<!-- Thumbnails go here via JS -->
+					</div>
+
+					<!-- Main Slideshow Image -->
+					<button type="button" onclick="openImageModal(document.getElementById('main-slideshow-img').src)" class="flex-1 aspect-[4/3] rounded-2xl bg-gray-100 dark:bg-[#151515] border border-gray-200 dark:border-gray-800 flex items-center justify-center overflow-hidden relative shadow-sm cursor-zoom-in group outline-none focus:ring-2 focus:ring-indigo-500" aria-label="Zoom main product image">
+						<img id="main-slideshow-img" src="/static/images/placeholder.webp" alt={ product.Title } class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" onerror="this.src='https://placehold.co/800x600/151515/333333?text=Image+Coming+Soon'" />
+						<div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center" aria-hidden="true">
+							<svg class="w-10 h-10 text-white opacity-0 group-hover:opacity-100 drop-shadow-md transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"></path></svg>
+						</div>
+					</button>
+				</div>
+
+				<!-- Dynamic Variant Description -->
+				<div id="variant-description-box" class="mt-6 p-5 bg-gray-50 dark:bg-[#151515] rounded-2xl border border-gray-100 dark:border-gray-800/60 text-sm text-gray-600 dark:text-gray-400 font-light shadow-sm transition-all" aria-live="polite">
+					<!-- JS injects the short description and features here -->
+				</div>
+			</div>
+
+			<!-- RIGHT COLUMN: Configuration Form -->
+			<div class="flex flex-col h-full relative pt-0 md:pt-2">
+				
+				<!-- H1 & Social Proof Ratings -->
+				<div class="flex flex-col sm:flex-row sm:items-end gap-3 mb-4">
+					<h1 class="text-3xl md:text-5xl font-medium text-gray-900 dark:text-gray-100 tracking-tight capitalize">
+						{ product.Title }
+					</h1>
+					if product.ReviewCount > 0 {
+						<a href="#reviews-section" class="flex items-center gap-1.5 pb-1 sm:pb-2 outline-none hover:opacity-80 transition-opacity cursor-pointer group" aria-label={ fmt.Sprintf("Rated %.1f out of 5 stars based on %d reviews. Click to jump to reviews.", product.ReviewScore, product.ReviewCount) }>
+							<svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+							<span class="text-sm font-medium text-gray-700 dark:text-gray-300">{ fmt.Sprintf("%.1f", product.ReviewScore) }</span>
+							<span class="text-xs text-gray-500 dark:text-gray-400 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 underline decoration-gray-300 dark:decoration-gray-700 group-hover:decoration-indigo-500 underline-offset-2 transition-colors">
+								({ fmt.Sprint(product.ReviewCount) } reviews)
+							</span>
+						</a>
+					}
+				</div>
+
+				<p class="text-gray-500 dark:text-gray-400 font-light mb-8 text-sm md:text-base leading-relaxed">
+					{ product.Description }
+				</p>
+
+				<!-- Config Form -->
+<form id="checkout-form" hx-post="/cart/add" hx-encoding="multipart/form-data" hx-swap="beforeend" hx-target="body" class="space-y-8 flex-1">
+					<input type="hidden" name="product" value={ product.Slug } />
+					<input type="hidden" id="has-back-design" name="has_back_design" value="false" />
+					if len(product.Sizes) > 0 {
+						<input type="hidden" id="selected-size" name="size" value={ product.Sizes[0].Value } />
+					}
+					<input type="hidden" id="selected-variant-index" name="variant_index" value="0" />
+					<input type="hidden" id="selected-quantity" name="quantity" value="" />
+					
+					<!-- 1. Horizontal Size Selector with generic size guide modal trigger -->
+					<div class="mb-8">
+						<div class="flex items-center gap-2 mb-4">
+							<legend class="block text-sm font-medium text-gray-700 dark:text-gray-300 tracking-wide uppercase">1. Select Size</legend>
+							<button type="button" onclick="openImageModal('https://placehold.co/800x600/1A1A1A/EDEDED?text=Size+Comparison+Guide')" class="text-gray-400 hover:text-indigo-500 transition-colors p-1 rounded-full outline-none focus:ring-2 focus:ring-indigo-500" aria-label="View size comparison guide">
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+							</button>
+						</div>
+						<div class="flex flex-wrap items-center gap-3" aria-label="Available Sizes">
+							for i, size := range product.Sizes {
+								<button 
+									type="button" 
+									onclick="selectSize(this.getAttribute('data-size'), this)"
+									data-size={ size.Value }
+									class={
+										"size-btn px-5 py-2.5 rounded-full border-2 text-sm font-medium transition-colors outline-none focus:ring-2 focus:ring-indigo-500",
+										templ.KV("border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300", i == 0),
+										templ.KV("border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 hover:border-indigo-300 dark:hover:border-indigo-700", i != 0)
+									}
+									aria-pressed={ fmt.Sprint(i == 0) }>
+									{ size.Label }
+								</button>
+							}
+						</div>
+					</div>
+
+					<!-- 2. Material / Variant Visual Grid (Dynamic Label) -->
+					<fieldset>
+						<legend class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-4 tracking-wide uppercase">2. Select { product.VariantLabel }</legend>
+						<div class="grid grid-cols-3 gap-3 md:gap-4">
+							for i, variant := range product.Variants {
+								<button 
+									type="button"
+									id={ fmt.Sprintf("variant-card-%d", i) }
+									data-variant-index={ fmt.Sprint(i) }
+									class="variant-card cursor-pointer group flex flex-col items-center outline-none focus:ring-2 focus:ring-indigo-500 rounded-xl rounded-b-none"
+									aria-label={ fmt.Sprintf("Select %s %s", variant.Name, product.VariantLabel) }>
+									
+									<div class={ 
+										"aspect-square w-full rounded-xl overflow-hidden bg-gray-100 dark:bg-[#1A1A1A] mb-2 relative transition-all border-2 group-hover:border-indigo-300 dark:group-hover:border-indigo-700",
+										templ.KV("border-indigo-500 dark:border-indigo-500 shadow-md", i == 0),
+										templ.KV("border-transparent", i != 0) 
+									}>
+										<img src={ variant.PreviewImageURL } alt="" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" onerror="this.src='https://placehold.co/400x400/151515/333333?text=Preview'" aria-hidden="true" />
+									</div>
+									<span class="text-xs md:text-sm font-medium text-gray-800 dark:text-gray-200 text-center leading-tight">
+										{ variant.Name }
+									</span>
+								</button>
+							}
+						</div>
+					</fieldset>
+
+					<!-- Dynamic Finishing / Coating Options (Injected via JS) -->
+					<div id="dynamic-options-container" class="space-y-8" aria-live="polite">
+						<!-- JavaScript builds fieldsets here using HTML5 data attributes -->
+					</div>
+
+					<!-- Quantity Cards -->
+					<fieldset class="mt-8">
+						<legend class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 tracking-wide uppercase">Quantity</legend>
+						<div id="quantity-cards-container" class="grid grid-cols-2 lg:grid-cols-3 gap-3">
+							<!-- JS populates this immediately on load -->
+						</div>
+					</fieldset>
+
+					<!-- Design & Order Instructions -->
+					<div class="mt-8">
+						<label for="order-instructions" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 tracking-wide uppercase">Design & Order Instructions</label>
+						<textarea id="order-instructions" name="instructions" rows="3" placeholder="E.g., Please ensure the logo is centered, or note about specific cutlines..." class="w-full p-4 bg-white dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:text-gray-200 text-sm shadow-sm transition-colors resize-y" aria-label="Optional design and order instructions"></textarea>
+					</div>
+				</form>
+			</div>
+		</div>
+
+		<!-- ========================================== -->
+		<!-- GEO / SEO SECTION & PRICING TABLE          -->
+		<!-- ========================================== -->
+		<div class="border-t border-gray-200 dark:border-gray-800 pt-16 space-y-16 max-w-4xl">
+			
+			<section aria-labelledby="about-product">
+				<h2 id="about-product" class="text-2xl font-medium text-gray-900 dark:text-gray-100 mb-4 tracking-tight">About Our { product.Title }</h2>
+				<p class="text-gray-600 dark:text-gray-400 font-light leading-relaxed">
+					{ product.LongDescription }
+				</p>
+			</section>
+
+			<section aria-labelledby="material-specs">
+				<h2 id="material-specs" class="text-2xl font-medium text-gray-900 dark:text-gray-100 mb-6 tracking-tight">{ product.VariantLabel } Options & Specifications</h2>
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+					for _, variant := range product.Variants {
+						<div class="p-6 bg-white dark:bg-[#111111] border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm">
+							<h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">{ variant.Name }</h3>
+							<p class="text-sm text-gray-500 dark:text-gray-400 font-light mb-4">{ variant.ShortDescription }</p>
+							<ul class="space-y-2">
+								for _, feature := range variant.Features {
+									<li class="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400 font-light">
+										<svg class="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+										{ feature }
+									</li>
+								}
+							</ul>
+						</div>
+					}
+				</div>
+			</section>
+
+			<!-- Customer Gallery Grid -->
+			if len(product.CustomerImages) > 0 {
+				<section aria-labelledby="customer-gallery-heading">
+					<h2 id="customer-gallery-heading" class="text-2xl font-medium text-gray-900 dark:text-gray-100 mb-6 tracking-tight">Customer Gallery</h2>
+					<div class="columns-2 md:columns-3 gap-4 space-y-4">
+						for i, img := range product.CustomerImages {
+							<button 
+								type="button" 
+								class="break-inside-avoid rounded-xl overflow-hidden shadow-sm cursor-zoom-in group w-full outline-none focus:ring-2 focus:ring-indigo-500" 
+								onclick="openImageModal(this.getAttribute('data-image-url'))"
+								data-image-url={ img }
+								aria-label={ fmt.Sprintf("View customer gallery image %d", i+1) }>
+								<img src={ img } alt="Printed product example from customer" class="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+							</button>
+						}
+					</div>
+				</section>
+			}
+
+			<!-- Pricing Table -->
+			<section aria-labelledby="pricing-guide">
+				<h2 id="pricing-guide" class="text-2xl font-medium text-gray-900 dark:text-gray-100 mb-6 tracking-tight">Pricing Guide</h2>
+				<p class="text-sm text-gray-500 dark:text-gray-400 mb-4 font-light">Showing base prices. Upcharges for specific sizes and finishing options will apply dynamically.</p>
+				<div class="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
+					<table class="w-full text-sm text-left text-gray-600 dark:text-gray-400">
+						<thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-[#151515] dark:text-gray-300 border-b border-gray-200 dark:border-gray-800">
+							<tr>
+								<th scope="col" class="px-6 py-4 font-medium">{ product.VariantLabel }</th>
+								<th scope="col" class="px-6 py-4 font-medium">Quantity</th>
+								<th scope="col" class="px-6 py-4 font-medium">Front Only</th>
+								<th scope="col" class="px-6 py-4 font-medium">Front & Back</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, variant := range product.Variants {
+								for i, tier := range variant.Pricing[product.Sizes[0].Value] {
+									<tr class="bg-white border-b dark:bg-[#111111] dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-[#151515] transition-colors">
+										if i == 0 {
+											<td class="px-6 py-4 font-medium text-gray-900 dark:text-gray-100 align-top" rowspan={ fmt.Sprint(len(variant.Pricing[product.Sizes[0].Value])) }>{ variant.Name }</td>
+										}
+										<td class="px-6 py-4">{ fmt.Sprint(tier.Qty) }</td>
+										<td class="px-6 py-4">${ fmt.Sprintf("%.2f", tier.FrontOnly) }</td>
+										if tier.FrontBack > 0 {
+											<td class="px-6 py-4">${ fmt.Sprintf("%.2f", tier.FrontBack) }</td>
+										} else {
+											<td class="px-6 py-4 text-gray-400 font-light">N/A</td>
+										}
+									</tr>
+								}
+							}
+						</tbody>
+					</table>
+				</div>
+			</section>
+
+			if len(product.FAQs) > 0 {
+				<section aria-labelledby="faq-heading">
+					<h2 id="faq-heading" class="text-2xl font-medium text-gray-900 dark:text-gray-100 mb-6 tracking-tight">Frequently Asked Questions</h2>
+					<div class="space-y-3">
+						for _, faq := range product.FAQs {
+							<details class="group bg-white dark:bg-[#111111] border border-gray-100 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm">
+								<summary class="flex justify-between items-center cursor-pointer p-6 font-medium text-gray-800 dark:text-gray-200 outline-none focus:ring-2 focus:ring-indigo-500 rounded-2xl">
+									{ faq.Question }
+									<svg class="w-5 h-5 text-gray-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+								</summary>
+								<div class="px-6 pb-6 text-sm text-gray-600 dark:text-gray-400 font-light leading-relaxed">
+									{ faq.Answer }
+								</div>
+							</details>
+						}
+					</div>
+				</section>
+			}
+
+			<!-- Social Proof Reviews -->
+			if len(product.CustomerReviews) > 0 {
+				<section id="reviews-section" aria-labelledby="reviews-heading">
+					<div class="flex items-center gap-4 mb-6">
+						<h2 id="reviews-heading" class="text-2xl font-medium text-gray-900 dark:text-gray-100 tracking-tight">Customer Reviews</h2>
+						<div class="flex items-center gap-1 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-1 rounded-full border border-yellow-200 dark:border-yellow-700/50" aria-label={ fmt.Sprintf("Rated %.1f out of 5 stars based on %d reviews", product.ReviewScore, product.ReviewCount) }>
+							<svg class="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+							<span class="text-sm font-medium text-yellow-700 dark:text-yellow-500">{ fmt.Sprintf("%.1f", product.ReviewScore) }</span>
+						</div>
+					</div>
+					
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+						for _, review := range product.CustomerReviews {
+							<article class="p-6 bg-white dark:bg-[#111111] border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm">
+								<div class="flex items-center justify-between mb-3">
+									<div class="flex items-center gap-2">
+										<div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/50 dark:to-purple-900/50 flex items-center justify-center border border-indigo-200 dark:border-indigo-800" aria-hidden="true">
+											<span class="text-xs font-semibold text-indigo-700 dark:text-indigo-300">{ string(review.Author[0]) }</span>
+										</div>
+										<span class="font-medium text-gray-900 dark:text-gray-100 text-sm">{ review.Author }</span>
+										<svg class="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20" aria-label="Verified Buyer"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+									</div>
+									<span class="text-xs text-gray-500 dark:text-gray-400">{ review.Date }</span>
+								</div>
+								<div class="flex items-center gap-1 mb-3" aria-label={ fmt.Sprintf("%d out of 5 stars", review.Rating) }>
+									for j := 0; j < 5; j++ {
+										if j < review.Rating {
+											<svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+										} else {
+											<svg class="w-4 h-4 text-gray-200 dark:text-gray-700" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+										}
+									}
+								</div>
+								<p class="text-sm text-gray-600 dark:text-gray-400 font-light leading-relaxed">"{ review.Text }"</p>
+							</article>
+						}
+					</div>
+				</section>
+			}
+		</div>
+	</div>
+
+	<!-- ========================================== -->
+	<!-- COMPACT FLOATING GLASSMORPHISM ACTION MENU -->
+	<!-- ========================================== -->
+	<div class="fixed bottom-4 md:bottom-6 left-4 right-4 md:left-[17rem] md:right-6 lg:left-[calc(16rem+2rem)] lg:right-8 xl:left-[calc(50%+8rem)] xl:-translate-x-1/2 w-[calc(100%-2rem)] md:w-auto xl:min-w-[850px] bg-white/90 dark:bg-[#111111]/90 backdrop-blur-xl border border-gray-200/80 dark:border-gray-700/80 rounded-2xl p-2 md:p-3 z-50 shadow-[0_20px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.5)] transition-colors" role="region" aria-label="Cart and file upload actions">
+		<div class="flex flex-row items-center justify-between gap-2 md:gap-4 w-full flex-wrap xl:flex-nowrap">
+			
+			<!-- Left: Upload Action Zone -->
+			<div class="flex items-center gap-2 flex-shrink-0" aria-label="File upload actions">
+				
+				<!-- Front Design Button -->
+				<button type="button" id="front-upload-idle" onclick="triggerFileUpload('front')" class="flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-gray-50 dark:bg-[#1A1A1A] hover:bg-gray-100 dark:hover:bg-[#222] border border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer transition-colors group shadow-sm outline-none focus:ring-2 focus:ring-indigo-500" aria-label="Upload front design">
+					<svg class="w-4 h-4 md:w-5 md:h-5 text-gray-500 dark:text-gray-400 group-hover:text-indigo-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+					<span class="text-[9px] md:text-[10px] font-medium text-gray-600 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white leading-tight mt-0.5">Front</span>
+				</button>
+				<!-- Front Upload Preview -->
+				<button type="button" id="front-upload-preview" class="hidden flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-500/30 rounded-xl relative shadow-sm cursor-zoom-in outline-none focus:ring-2 focus:ring-indigo-500" onclick="openImageModal(document.getElementById('front-preview-img').src)" aria-label="View uploaded front design">
+					<img id="front-preview-img" src="" class="w-6 h-6 md:w-8 md:h-8 rounded object-cover mb-0.5 bg-white dark:bg-gray-800" alt="" aria-hidden="true" />
+					<span id="front-filename" class="text-[8px] md:text-[9px] font-medium text-indigo-700 dark:text-indigo-300 w-full text-center truncate px-1" aria-hidden="true">file.jpg</span>
+					<div onclick="removeFile(event, 'front')" class="absolute -top-1.5 -right-1.5 bg-white dark:bg-gray-800 text-red-500 rounded-full p-0.5 shadow hover:bg-red-50 transition-colors border border-gray-200 dark:border-gray-700 hover:text-red-600" aria-label="Remove front design">
+						<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+					</div>
+				</button>
+
+				<!-- Add Back Design Button -->
+				<button type="button" id="back-add-idle" onclick="toggleBackDesign()" class="flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-gray-50/50 dark:bg-[#111] hover:bg-gray-100 dark:hover:bg-[#1A1A1A] border border-dashed border-gray-300 dark:border-gray-700 rounded-xl cursor-pointer transition-colors group outline-none focus:ring-2 focus:ring-indigo-500" aria-label="Add back design to order">
+					<svg class="w-4 h-4 md:w-5 md:h-5 text-indigo-400 group-hover:text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+					<span class="text-[9px] md:text-[10px] font-medium text-indigo-500 dark:text-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 leading-tight mt-0.5">Add Back</span>
+				</button>
+
+				<!-- Back Upload Action -->
+				<button type="button" id="back-upload-idle" onclick="triggerFileUpload('back')" class="hidden flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-gray-50 dark:bg-[#1A1A1A] hover:bg-gray-100 dark:hover:bg-[#222] border border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer transition-colors group shadow-sm outline-none focus:ring-2 focus:ring-indigo-500" aria-label="Upload back design">
+					<svg class="w-4 h-4 md:w-5 md:h-5 text-gray-500 dark:text-gray-400 group-hover:text-indigo-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+					<span class="text-[9px] md:text-[10px] font-medium text-gray-600 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white leading-tight mt-0.5">Back</span>
+				</button>
+
+				<!-- Back Upload Preview -->
+				<button type="button" id="back-upload-preview" class="hidden flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-500/30 rounded-xl relative shadow-sm cursor-zoom-in outline-none focus:ring-2 focus:ring-indigo-500" onclick="openImageModal(document.getElementById('back-preview-img').src)" aria-label="View uploaded back design">
+					<img id="back-preview-img" src="" class="w-6 h-6 md:w-8 md:h-8 rounded object-cover mb-0.5 bg-white dark:bg-gray-800" alt="" aria-hidden="true" />
+					<span id="back-filename" class="text-[8px] md:text-[9px] font-medium text-indigo-700 dark:text-indigo-300 w-full text-center truncate px-1" aria-hidden="true">back.pdf</span>
+					<div onclick="removeFile(event, 'back')" class="absolute -top-1.5 -right-1.5 bg-white dark:bg-gray-800 text-red-500 rounded-full p-0.5 shadow hover:bg-red-50 transition-colors border border-gray-200 dark:border-gray-700 hover:text-red-600" aria-label="Remove back design">
+						<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+					</div>
+				</button>
+
+				<!-- Additional Files Button -->
+				<button type="button" id="additional-upload-idle" onclick="triggerFileUpload('additional')" class="flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-gray-50/50 dark:bg-[#111] hover:bg-gray-100 dark:hover:bg-[#1A1A1A] border border-dashed border-gray-300 dark:border-gray-700 rounded-xl cursor-pointer transition-colors group outline-none focus:ring-2 focus:ring-gray-400" aria-label="Upload additional files">
+					<svg class="w-4 h-4 md:w-5 md:h-5 text-gray-400 group-hover:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+					<span class="text-[9px] md:text-[10px] font-medium text-gray-500 dark:text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 leading-tight mt-0.5">Extras</span>
+				</button>
+				<!-- Additional Upload Preview -->
+				<button type="button" id="additional-upload-preview" class="hidden flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl relative shadow-sm cursor-zoom-in outline-none focus:ring-2 focus:ring-gray-400" onclick="openImageModal(document.getElementById('additional-preview-img').src)" aria-label="View uploaded additional file">
+					<img id="additional-preview-img" src="" class="w-6 h-6 md:w-8 md:h-8 rounded object-cover mb-0.5 bg-white dark:bg-gray-700" alt="" aria-hidden="true" />
+					<span id="additional-filename" class="text-[8px] md:text-[9px] font-medium text-gray-700 dark:text-gray-300 w-full text-center truncate px-1" aria-hidden="true">extra.zip</span>
+					<div onclick="removeFile(event, 'additional')" class="absolute -top-1.5 -right-1.5 bg-white dark:bg-gray-800 text-red-500 rounded-full p-0.5 shadow hover:bg-red-50 transition-colors border border-gray-200 dark:border-gray-700 hover:text-red-600" aria-label="Remove additional file">
+						<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+					</div>
+				</button>
+			</div>
+
+			<!-- Center: Variant Summary & Qty Controls -->
+			<div class="hidden sm:flex flex-col items-center justify-center flex-1 px-3 border-l border-r border-gray-200/50 dark:border-gray-800/50 mx-2">
+				<span id="sticky-variant-name" class="text-[9px] md:text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 text-center truncate w-full px-2" aria-hidden="true">
+					Select Material
+				</span>
+				
+				<!-- Compact Qty +/- Controls -->
+				<div class="flex items-center gap-1 bg-gray-100 dark:bg-[#1A1A1A] rounded-lg p-0.5 border border-gray-200 dark:border-gray-800 shadow-inner" aria-label="Quantity controls">
+					<button type="button" onclick="changeQuantityStep(-1)" class="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-indigo-500 hover:bg-white dark:hover:bg-gray-800 rounded-md transition-colors outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer" aria-label="Decrease quantity">
+						<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4"></path></svg>
+					</button>
+					
+					<span id="sticky-qty-display" class="text-xs md:text-sm font-medium text-gray-900 dark:text-gray-100 w-10 md:w-12 text-center select-none" aria-live="polite">
+						0
+					</span>
+					
+					<button type="button" onclick="changeQuantityStep(1)" class="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:text-indigo-500 hover:bg-white dark:hover:bg-gray-800 rounded-md transition-colors outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer" aria-label="Increase quantity">
+						<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"></path></svg>
+					</button>
+				</div>
+			</div>
+
+			<!-- Right: Price & Cart Action -->
+			<div class="flex items-center justify-end gap-3 md:gap-5 flex-shrink-0 ml-auto">
+				<div class="flex flex-col text-right">
+					<span class="text-[9px] md:text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" aria-hidden="true">Total</span>
+					<span class="text-lg md:text-2xl font-medium text-gray-900 dark:text-gray-100 tracking-tight leading-none total-price-display" aria-live="polite">
+						$--.--
+					</span>
+					<span class="text-[9px] md:text-[10px] text-green-600 dark:text-green-400 font-medium mt-0.5 flex items-center justify-end gap-0.5">
+						<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+						Free US Ground Shipping
+					</span>
+				</div>
+<div id="add-to-cart-wrapper" class="flex items-center gap-2">
+                    <button type="submit" form="checkout-form" id="add-to-cart-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 px-4 md:py-3 md:px-6 rounded-xl transition-all shadow-md hover:shadow-indigo-500/25 tracking-wide outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer text-xs md:text-sm whitespace-nowrap flex-shrink-0">
+                        Add To Cart
+                    </button>
+                </div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Bulletproof 0MS LATENCY VANILLA JS LOGIC -->
+	<script>
+		let variants = [];
+		let currentVariantIndex = 0;
+		let currentSizeValue = '';
+		let isDoubleSided = false;
+		let currentQty = 0;
+
+		window.initPrintCalculator = function() {
+			try {
+				const variantsDataEl = document.getElementById('variants-data');
+				if (!variantsDataEl) return; 
+				variants = JSON.parse(variantsDataEl.textContent);
+				
+				// Initialize default size safely
+				const sizeInput = document.getElementById('selected-size');
+				if (sizeInput && sizeInput.value) {
+					currentSizeValue = sizeInput.value;
+				}
+
+				document.querySelectorAll('.variant-card').forEach(card => {
+					if (!card.dataset.initialized) {
+						card.addEventListener('click', (e) => {
+							const targetCard = e.target.closest('.variant-card');
+							if(targetCard) {
+								const index = parseInt(targetCard.getAttribute('data-variant-index'));
+								selectVariant(index);
+							}
+						});
+						card.dataset.initialized = "true";
+					}
+				});
+
+				if (variants && variants.length > 0) {
+					selectVariant(0);
+				}
+			} catch (err) {
+				console.error("PrintFromAI: Initialization Error", err);
+			}
+		};
+
+		window.selectSize = function(sizeValue, btnElement) {
+			currentSizeValue = sizeValue;
+			document.getElementById('selected-size').value = sizeValue;
+			
+			// Update UI
+			document.querySelectorAll('.size-btn').forEach(btn => {
+				btn.classList.remove('border-indigo-500', 'bg-indigo-50', 'dark:bg-indigo-900/20', 'text-indigo-700', 'dark:text-indigo-300');
+				btn.classList.add('border-gray-200', 'dark:border-gray-800', 'text-gray-700', 'dark:text-gray-300');
+				btn.setAttribute('aria-pressed', 'false');
+			});
+			btnElement.classList.remove('border-gray-200', 'dark:border-gray-800', 'text-gray-700', 'dark:text-gray-300');
+			btnElement.classList.add('border-indigo-500', 'bg-indigo-50', 'dark:bg-indigo-900/20', 'text-indigo-700', 'dark:text-indigo-300');
+			btnElement.setAttribute('aria-pressed', 'true');
+
+			// Refresh pricing for current variant based on new size
+			selectVariant(currentVariantIndex);
+		};
+
+		window.selectVariant = function(index) {
+			try {
+				if (!variants || !variants[index]) return;
+				
+				currentVariantIndex = index;
+				const variant = variants[index];
+				
+				document.getElementById('selected-variant-index').value = index;
+
+				// Update visual borders for material
+				document.querySelectorAll('.variant-card').forEach((card, i) => {
+					const innerDiv = card.querySelector('div.aspect-square');
+					if (i === index) {
+						innerDiv.classList.remove('border-transparent');
+						innerDiv.classList.add('border-indigo-500', 'dark:border-indigo-500', 'shadow-md');
+						card.setAttribute('aria-pressed', 'true');
+					} else {
+						innerDiv.classList.remove('border-indigo-500', 'dark:border-indigo-500', 'shadow-md');
+						innerDiv.classList.add('border-transparent');
+						card.setAttribute('aria-pressed', 'false');
+					}
+				});
+
+				const mainImg = document.getElementById('main-slideshow-img');
+				const thumbContainer = document.getElementById('thumbnail-container');
+				
+				if (variant.imageUrls && variant.imageUrls.length > 0) {
+					mainImg.src = variant.imageUrls[0];
+					thumbContainer.innerHTML = variant.imageUrls.map((url, i) => `
+						<button type="button" aria-label="Select thumbnail ${i+1}" onclick="setMainImage(this.getAttribute('data-image-url'), this)" data-image-url="${url}" class="thumbnail-btn flex-shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 ${i === 0 ? 'border-indigo-500' : 'border-transparent'} outline-none focus:ring-2 focus:ring-indigo-500 transition-colors cursor-pointer bg-gray-100 dark:bg-[#1A1A1A]">
+							<img src="${url}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/400x400/151515/333333?text=Preview'" aria-hidden="true"/>
+						</button>
+					`).join('');
+				} else {
+					mainImg.src = variant.previewImageUrl || 'https://placehold.co/800x600/151515/333333?text=Preview';
+					thumbContainer.innerHTML = ''; 
+				}
+
+				const descBox = document.getElementById('variant-description-box');
+				let featureListHTML = "";
+				if(variant.features) {
+					featureListHTML = variant.features.map(f => `<li class="flex items-start gap-2"><svg class="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>${f}</li>`).join('');
+				}
+				descBox.innerHTML = `
+					<h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">${variant.name}</h3>
+					<p class="mb-4">${variant.shortDescription || ''}</p>
+					<ul class="space-y-1.5">${featureListHTML}</ul>
+				`;
+
+				// Render Dynamic Options (Coatings, Corner Cuts)
+				const optionsContainer = document.getElementById('dynamic-options-container');
+				optionsContainer.innerHTML = '';
+				let optionIndex = 3; // Starts at 3 (1=Size, 2=Material)
+				
+				if (variant.options && variant.options.length > 0) {
+					variant.options.forEach((opt) => {
+						let optTitle = opt.title;
+						let buttonsHTML = opt.choices.map((choice, choiceIndex) => {
+							const isSelected = choiceIndex === 0;
+							
+							let upchargesStr = "{}";
+							if (choice.upcharges) {
+								upchargesStr = JSON.stringify(choice.upcharges).replace(/"/g, '&quot;');
+							}
+
+							const safeLabel = choice.label.replace(/"/g, '&quot;');
+
+							return `<button type="button" aria-pressed="${isSelected}" onclick="selectDynamicOption('${optTitle}', '${choice.value}', this)" class="dynamic-option-btn border-2 ${isSelected ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' : 'border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 hover:border-indigo-300'} rounded-xl p-3 text-sm font-medium transition-all outline-none focus:ring-2 focus:ring-indigo-500" data-option-group="${optTitle}" data-base-label="${safeLabel}" data-upcharges="${upchargesStr}">
+								${choice.label}
+							</button>`;
+						}).join('');
+
+						optionsContainer.insertAdjacentHTML('beforeend', `
+							<fieldset class="mt-8">
+								<legend class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 tracking-wide uppercase">${optionIndex}. ${optTitle}</legend>
+								<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+									${buttonsHTML}
+								</div>
+								<input type="hidden" name="option_${optTitle}" id="input_option_${optTitle}" value="${opt.choices.length > 0 ? opt.choices[0].value : ''}" />
+							</fieldset>
+						`);
+						optionIndex++;
+					});
+				}
+
+				document.getElementById('sticky-variant-name').textContent = variant.name;
+
+				// Generate Quantity Cards (Based on selected size)
+				const qtyContainer = document.getElementById('quantity-cards-container');
+				qtyContainer.innerHTML = ''; 
+				
+				const pricingArray = variant.pricing ? variant.pricing[currentSizeValue] : [];
+				let foundMatch = false;
+				
+				if(pricingArray && pricingArray.length > 0) {
+					pricingArray.forEach((tier, i) => {
+						const isSelected = (currentQty === tier.qty) || (i === 0 && currentQty === 0);
+						if (isSelected) {
+							currentQty = tier.qty;
+							foundMatch = true;
+						}
+
+						const btnHTML = `
+							<button type="button" aria-pressed="${isSelected}" onclick="selectQuantity(${tier.qty})" class="qty-card flex flex-col items-center justify-center p-3 md:p-4 rounded-xl border-2 transition-all outline-none focus:ring-2 focus:ring-indigo-500 ${isSelected ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1A1A1A] hover:border-indigo-300 dark:hover:border-indigo-700'}" data-qty="${tier.qty}">
+								<span class="text-lg md:text-xl font-bold text-gray-900 dark:text-white">${tier.qty.toLocaleString()}</span>
+								<span class="text-sm font-medium ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}">--</span>
+							</button>
+						`;
+						qtyContainer.insertAdjacentHTML('beforeend', btnHTML);
+					});
+
+					if (!foundMatch) {
+						currentQty = pricingArray[0].qty;
+					}
+					
+					updateQuantityState(); 
+				} else {
+					qtyContainer.innerHTML = '<div class="col-span-full text-sm text-red-500 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">Pricing not available for this size/material combination.</div>';
+					document.querySelectorAll('.total-price-display').forEach(el => el.textContent = '$0.00');
+				}
+			} catch (err) {
+				console.error("PrintFromAI: Error in selectVariant", err);
+			}
+		};
+
+		window.selectDynamicOption = function(group, value, btnElement) {
+			document.getElementById('input_option_' + group).value = value;
+			document.querySelectorAll('.dynamic-option-btn[data-option-group="' + group + '"]').forEach(btn => {
+				btn.classList.remove('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-900/20', 'text-indigo-700', 'dark:text-indigo-300');
+				btn.classList.add('border-gray-200', 'dark:border-gray-800', 'text-gray-700', 'dark:text-gray-300');
+				btn.setAttribute('aria-pressed', 'false');
+			});
+			btnElement.classList.remove('border-gray-200', 'dark:border-gray-800', 'text-gray-700', 'dark:text-gray-300');
+			btnElement.classList.add('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-900/20', 'text-indigo-700', 'dark:text-indigo-300');
+			btnElement.setAttribute('aria-pressed', 'true');
+			
+			calculatePrice();
+		};
+
+		window.selectQuantity = function(qty) {
+			currentQty = qty;
+			updateQuantityState();
+		};
+
+		window.updateQuantityState = function() {
+			document.getElementById('selected-quantity').value = currentQty;
+			document.getElementById('sticky-qty-display').textContent = currentQty.toLocaleString();
+			
+			// Visually update the cards
+			document.querySelectorAll('.qty-card').forEach(card => {
+				const cardQty = parseInt(card.getAttribute('data-qty'));
+				const priceSpan = card.querySelector('span:last-child');
+				
+				if (cardQty === currentQty) {
+					card.classList.add('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-900/20');
+					card.classList.remove('border-gray-200', 'dark:border-gray-800', 'bg-white', 'dark:bg-[#1A1A1A]');
+					card.setAttribute('aria-pressed', 'true');
+					priceSpan.classList.add('text-indigo-600', 'dark:text-indigo-400');
+					priceSpan.classList.remove('text-gray-500', 'dark:text-gray-400');
+				} else {
+					card.classList.remove('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-900/20');
+					card.classList.add('border-gray-200', 'dark:border-gray-800', 'bg-white', 'dark:bg-[#1A1A1A]');
+					card.setAttribute('aria-pressed', 'false');
+					priceSpan.classList.remove('text-indigo-600', 'dark:text-indigo-400');
+					priceSpan.classList.add('text-gray-500', 'dark:text-gray-400');
+				}
+			});
+
+			// Update Dynamic Option labels to reflect specific quantity upcharge
+			document.querySelectorAll('.dynamic-option-btn').forEach(btn => {
+				try {
+					const upchargesData = btn.getAttribute('data-upcharges');
+					let upcharges = {};
+					if (upchargesData && upchargesData !== '{}') {
+						const jsonString = upchargesData.replace(/&quot;/g, '"');
+						upcharges = JSON.parse(jsonString);
+					}
+					
+					const baseLabel = btn.getAttribute('data-base-label').replace(/&quot;/g, '"');
+					const upcharge = parseFloat(upcharges[currentQty]) || 0;
+					
+					if (upcharge > 0) {
+						btn.textContent = `${baseLabel} (+$${upcharge.toFixed(2)})`;
+					} else {
+						btn.textContent = baseLabel;
+					}
+				} catch(e) {
+					console.error("Error parsing upcharge JSON", e);
+				}
+			});
+
+			calculatePrice();
+		};
+
+		window.changeQuantityStep = function(direction) {
+			try {
+				const variant = variants[currentVariantIndex];
+				const pricingArray = variant.pricing ? variant.pricing[currentSizeValue] : [];
+				if (!pricingArray || pricingArray.length === 0) return;
+				
+				let tierIndex = pricingArray.findIndex(t => t.qty === currentQty);
+				if (tierIndex === -1) tierIndex = 0;
+				
+				let newIndex = tierIndex + direction;
+				if (newIndex < 0) newIndex = 0;
+				if (newIndex >= pricingArray.length) newIndex = pricingArray.length - 1;
+				
+				selectQuantity(pricingArray[newIndex].qty);
+			} catch (err) {}
+		};
+
+		window.calculatePrice = function() {
+			try {
+				const variant = variants[currentVariantIndex];
+				const pricingArray = variant.pricing ? variant.pricing[currentSizeValue] : [];
+				const priceDisplays = document.querySelectorAll('.total-price-display');
+				
+				if (!pricingArray || pricingArray.length === 0 || currentQty === 0) return;
+
+				const tier = pricingArray.find(t => t.qty === currentQty);
+				if (!tier) return;
+
+				let activeOptionsUpcharge = 0;
+				document.querySelectorAll('.dynamic-option-btn[aria-pressed="true"]').forEach(btn => {
+					const upchargesData = btn.getAttribute('data-upcharges');
+					if (upchargesData && upchargesData !== '{}') {
+						const jsonString = upchargesData.replace(/&quot;/g, '"');
+						const upcharges = JSON.parse(jsonString);
+						activeOptionsUpcharge += parseFloat(upcharges[currentQty]) || 0;
+					}
+				});
+
+				let basePrice = isDoubleSided ? tier.frontBack : tier.frontOnly;
+				
+				if (isDoubleSided && tier.frontBack === 0) {
+					basePrice = tier.frontOnly; 
+					alert("Double-sided printing is not available for this specific material/size.");
+					removeFile(new Event('click'), 'back'); 
+					return;
+				}
+
+				let finalPrice = basePrice + activeOptionsUpcharge;
+
+				priceDisplays.forEach(el => {
+					el.textContent = '$' + finalPrice.toFixed(2);
+				});
+				
+				// Re-render Quantity Cards to show what total WOULD BE
+				const qtyContainer = document.getElementById('quantity-cards-container');
+				if (qtyContainer && qtyContainer.children.length > 0) {
+					pricingArray.forEach((t, i) => {
+						const card = document.querySelector(`.qty-card[data-qty="${t.qty}"]`);
+						if (card) {
+							const priceSpan = card.querySelector('span:last-child');
+							const p = isDoubleSided ? t.frontBack : t.frontOnly;
+							
+							let cardUpcharge = 0;
+							document.querySelectorAll('.dynamic-option-btn[aria-pressed="true"]').forEach(btn => {
+								const upchargesData = btn.getAttribute('data-upcharges');
+								if (upchargesData && upchargesData !== '{}') {
+									const jsonString = upchargesData.replace(/&quot;/g, '"');
+									const upcharges = JSON.parse(jsonString);
+									cardUpcharge += parseFloat(upcharges[t.qty]) || 0;
+								}
+							});
+
+							const totalCardPrice = p + cardUpcharge;
+							priceSpan.textContent = (isDoubleSided && t.frontBack === 0) ? 'N/A' : `$${totalCardPrice.toFixed(2)}`;
+						}
+					});
+				}
+
+			} catch (err) {}
+		};
+
+		// Modals for Images
+		window.openImageModal = function(src) {
+			if (!src || src.includes('placeholder')) return;
+			const modal = document.getElementById('image-zoom-modal');
+			const img = document.getElementById('zoomed-image');
+			img.src = src;
+			modal.classList.remove('hidden');
+			modal.classList.add('flex');
+			setTimeout(() => { modal.classList.remove('opacity-0'); }, 10);
+			
+			// Close on escape key
+			document.addEventListener('keydown', function closeOnEsc(e) {
+				if(e.key === "Escape") {
+					closeImageModal();
+					document.removeEventListener('keydown', closeOnEsc);
+				}
+			});
+		};
+
+		window.closeImageModal = function() {
+			const modal = document.getElementById('image-zoom-modal');
+			modal.classList.add('opacity-0');
+			setTimeout(() => {
+				modal.classList.remove('flex');
+				modal.classList.add('hidden');
+				document.getElementById('zoomed-image').src = '';
+			}, 300);
+		};
+
+		// Functional File Upload Handlers
+		window.triggerFileUpload = function(type) {
+			document.getElementById(`${type}-file-input`).click();
+		};
+
+		window.handleFileUpload = function(event, type) {
+			const file = event.target.files[0];
+			if (!file) return;
+
+			const objectUrl = URL.createObjectURL(file);
+			const isPDF = file.name.toLowerCase().endsWith('.pdf');
+			const isZIP = file.name.toLowerCase().endsWith('.zip');
+			
+			let iconSrc = objectUrl;
+			if(isPDF) iconSrc = 'https://placehold.co/100x100/4F46E5/ffffff?text=PDF';
+			if(isZIP) iconSrc = 'https://placehold.co/100x100/4F46E5/ffffff?text=ZIP';
+
+			document.getElementById(`${type}-upload-idle`).classList.add('hidden');
+			document.getElementById(`${type}-upload-idle`).classList.remove('flex');
+			
+			const previewContainer = document.getElementById(`${type}-upload-preview`);
+			previewContainer.classList.remove('hidden');
+			previewContainer.classList.add('flex');
+			
+			const imgEl = document.getElementById(`${type}-preview-img`);
+			imgEl.src = iconSrc;
+			if (!isPDF && !isZIP) imgEl.setAttribute('data-original-url', objectUrl);
+			
+			document.getElementById(`${type}-filename`).textContent = file.name;
+
+			if (type === 'back') {
+				isDoubleSided = true;
+				document.getElementById('has-back-design').value = "true";
+				document.getElementById('back-add-idle').classList.add('hidden');
+				calculatePrice();
+			}
+		};
+
+		window.removeFile = function(event, type) {
+			if (event) event.stopPropagation();
+			
+			document.getElementById(`${type}-file-input`).value = '';
+			document.getElementById(`${type}-upload-preview`).classList.add('hidden');
+			document.getElementById(`${type}-upload-preview`).classList.remove('flex');
+			
+			if (type === 'back') {
+				isDoubleSided = false;
+				document.getElementById('has-back-design').value = "false";
+				document.getElementById('back-add-idle').classList.remove('hidden');
+				calculatePrice();
+			} else {
+				document.getElementById(`${type}-upload-idle`).classList.remove('hidden');
+				document.getElementById(`${type}-upload-idle`).classList.add('flex');
+			}
+		};
+
+		window.toggleBackDesign = function() {
+			triggerFileUpload('back');
+		};
+
+		window.setMainImage = function(url, btnElement) {
+			document.getElementById('main-slideshow-img').src = url;
+			document.querySelectorAll('.thumbnail-btn').forEach(btn => {
+				btn.classList.remove('border-indigo-500');
+				btn.classList.add('border-transparent');
+			});
+			btnElement.classList.remove('border-transparent');
+			btnElement.classList.add('border-indigo-500');
+		};
+// Opens the cart drawer (instantly if in DOM, or fetches via HTMX if not)
+        window.openCart = function() {
+            const existingCart = document.getElementById('cart-drawer-container');
+            
+            if (existingCart) {
+                // 1. Unhide the container instantly
+                existingCart.classList.remove('hidden');
+                
+                // 2. Trigger the slide-in animation
+                setTimeout(() => {
+                    document.getElementById('cart-drawer').classList.remove('translate-x-full');
+                    document.getElementById('cart-drawer').classList.add('translate-x-0');
+                    document.getElementById('cart-drawer-overlay').classList.remove('opacity-0');
+                }, 10);
+            } else {
+                // Fetch from server if not in DOM (e.g. page refresh)
+                htmx.ajax('GET', '/cart', {target: 'body', swap: 'beforeend'});
+            }
+        };
+
+        // Resets the UI so the user can upload a completely new set of designs
+        window.resetUploadSet = function() {
+            // 1. Clear hidden file inputs
+            document.getElementById('front-file-input').value = '';
+            document.getElementById('back-file-input').value = '';
+            document.getElementById('additional-file-input').value = '';
+            
+            // 2. Hide previews & show idle buttons
+            ['front', 'back', 'additional'].forEach(type => {
+                const preview = document.getElementById(`${type}-upload-preview`);
+                if (preview) {
+                    preview.classList.add('hidden');
+                    preview.classList.remove('flex');
+                }
+            });
+            
+            document.getElementById('front-upload-idle').classList.remove('hidden');
+            document.getElementById('front-upload-idle').classList.add('flex');
+            
+            document.getElementById('additional-upload-idle').classList.remove('hidden');
+            document.getElementById('additional-upload-idle').classList.add('flex');
+
+            // 3. Reset Back Design state
+            isDoubleSided = false;
+            document.getElementById('has-back-design').value = "false";
+            document.getElementById('back-upload-idle').classList.add('hidden');
+            document.getElementById('back-upload-idle').classList.remove('flex');
+            document.getElementById('back-add-idle').classList.remove('hidden');
+            
+            // 4. Restore the original Add To Cart button
+            const wrapper = document.getElementById('add-to-cart-wrapper');
+            if (wrapper) {
+                wrapper.innerHTML = `
+                    <button type="submit" form="checkout-form" id="add-to-cart-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 px-4 md:py-3 md:px-6 rounded-xl transition-all shadow-md hover:shadow-indigo-500/25 tracking-wide outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer text-xs md:text-sm whitespace-nowrap flex-shrink-0">
+                        Add To Cart
+                    </button>
+                `;
+                // Re-process the new HTML with HTMX so it knows about the form submission
+                htmx.process(wrapper); 
+            }
+
+            // 5. Recalculate base price
+            calculatePrice();
+        };
+
+		// Kickoff initialization
+		setTimeout(initPrintCalculator, 10);
+
+// --- NEW: Frontend Validation & Shake Animation ---
+        document.body.addEventListener('htmx:confirm', function(event) {
+            // Only intercept if it's our checkout form
+            if (event.detail.elt.id === 'checkout-form') {
+                const frontFile = document.getElementById('front-file-input').value;
+                // Strictly targets the FRONT button in your floating menu
+                const uploadZone = document.getElementById('front-upload-idle'); 
+                
+                if (!frontFile) {
+                    // 1. Stop HTMX from sending the request to Go
+                    event.preventDefault(); 
+                    
+                    // 2. Add the red border/text and trigger the shake animation
+                    uploadZone.classList.add('border-red-500', 'text-red-500');
+                    uploadZone.classList.remove('dark:border-gray-700', 'border-gray-200');
+                    uploadZone.style.animation = 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both';
+                    
+                    // 3. Remove the error state after the animation finishes (800ms)
+                    setTimeout(() => {
+                        uploadZone.classList.remove('border-red-500', 'text-red-500');
+                        uploadZone.classList.add('dark:border-gray-700', 'border-gray-200');
+                        uploadZone.style.animation = '';
+                    }, 800);
+                }
+            }
+        });
+	</script>
+	
+	<style>
+		.hide-scrollbar::-webkit-scrollbar { display: none; }
+		.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+		/* --- NEW: Shake Animation for Validation --- */
+		@keyframes shake {
+			10%, 90% { transform: translate3d(-1px, 0, 0); }
+			20%, 80% { transform: translate3d(2px, 0, 0); }
+			30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+			40%, 60% { transform: translate3d(4px, 0, 0); }
+		}
+	</style>
+}

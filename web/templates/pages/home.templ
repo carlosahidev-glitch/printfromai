@@ -1,0 +1,70 @@
+package pages
+
+import "github.com/printfromai/core/web/templates/layout"
+
+// HomeIndex checks if this is an HTMX request.
+// If it is, it only sends the HomeContent. 
+// If it's a full page refresh, it wraps HomeContent inside the Base layout.
+templ HomeIndex(isHTMX bool) {
+	if isHTMX {
+		@HomeContent()
+	} else {
+		@layout.Base("PrintFromAI - Premium Print Pipeline") {
+			@HomeContent()
+		}
+	}
+}
+
+// HomeContent is the actual UI for the home page.
+templ HomeContent() {
+	<div class="flex flex-col h-full w-full p-6 md:p-10 max-w-7xl mx-auto transition-colors duration-300">
+		
+		<!-- Minimalist Search Header -->
+		<div class="flex flex-col items-center justify-center mt-8 md:mt-16 mb-12 md:mb-20 w-full">
+			<h1 class="text-3xl md:text-5xl font-medium mb-8 text-gray-900 dark:text-gray-100 tracking-tight text-center">
+				What would you like to print?
+			</h1>
+			
+			<div class="relative w-full max-w-2xl">
+				<div class="absolute inset-y-0 left-0 flex items-center pl-5 pointer-events-none">
+					<svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+					</svg>
+				</div>
+				<input type="text" 
+					   id="product-search"
+					   class="block w-full p-4 pl-14 text-lg text-gray-900 bg-white border border-gray-200 rounded-2xl shadow-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-[#151515] dark:border-gray-800 dark:placeholder-gray-500 dark:text-gray-200 outline-none transition-all"
+					   placeholder="e.g. Business Cards, Flyers, Door Hangers..." />
+			</div>
+		</div>
+
+		<!-- Product Grid -->
+		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6" id="product-grid">
+			
+			<!-- Business Cards -->
+			<a href="/product/business-cards" hx-get="/product/business-cards" hx-target="#main-content" hx-push-url="true" class="group relative flex flex-col aspect-square rounded-2xl bg-white dark:bg-[#151515] border border-gray-200 dark:border-gray-800 overflow-hidden hover:shadow-md hover:border-indigo-500/50 dark:hover:border-indigo-500/50 transition-all cursor-pointer">
+				<div class="flex-1 bg-gray-50 dark:bg-[#1A1A1A] p-4 flex items-center justify-center">
+					<svg class="w-12 h-12 text-gray-400 dark:text-gray-600 group-hover:scale-110 group-hover:text-indigo-400 transition-all duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+					</svg>
+				</div>
+				<div class="p-4 bg-white dark:bg-[#151515] border-t border-gray-100 dark:border-gray-800/50">
+					<h3 class="font-medium text-sm md:text-base text-gray-800 dark:text-gray-200 text-center tracking-wide">Business Cards</h3>
+				</div>
+			</a>
+
+			<!-- Postcards -->
+			<a href="/product/postcards" hx-get="/product/postcards" hx-target="#main-content" hx-push-url="true" class="group relative flex flex-col aspect-square rounded-2xl bg-white dark:bg-[#151515] border border-gray-200 dark:border-gray-800 overflow-hidden hover:shadow-md hover:border-indigo-500/50 dark:hover:border-indigo-500/50 transition-all cursor-pointer">
+				<div class="flex-1 bg-gray-50 dark:bg-[#1A1A1A] p-4 flex items-center justify-center">
+					<svg class="w-12 h-12 text-gray-400 dark:text-gray-600 group-hover:scale-110 group-hover:text-indigo-400 transition-all duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9.5a2 2 0 00-.586-1.414l-4.586-4.586A2 2 0 0015.414 3H15"></path>
+					</svg>
+				</div>
+				<div class="p-4 bg-white dark:bg-[#151515] border-t border-gray-100 dark:border-gray-800/50">
+					<h3 class="font-medium text-sm md:text-base text-gray-800 dark:text-gray-200 text-center tracking-wide">Postcards</h3>
+				</div>
+			</a>
+
+		</div>
+	</div>
+}

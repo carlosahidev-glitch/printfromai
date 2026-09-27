@@ -1,0 +1,61 @@
+package layout
+
+import "github.com/printfromai/core/web/templates/components"
+
+// Base is the master shell for PrintFromAI.
+templ Base(title string) {
+	<!DOCTYPE html>
+	<html lang="en" class="dark">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ title }</title>
+			
+			<script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+			<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+			
+			<link rel="preconnect" href="https://fonts.googleapis.com"/>
+			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
+			<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+			
+			<script>
+				if (localStorage.getItem('theme') === 'light') {
+					document.documentElement.classList.remove('dark');
+				} else {
+					document.documentElement.classList.add('dark');
+					localStorage.setItem('theme', 'dark');
+				}
+			</script>
+			
+			<style>
+				body { font-family: 'Inter', sans-serif; }
+				html { transition: background-color 0.3s ease, color 0.3s ease; }
+				::-webkit-scrollbar { width: 6px; }
+				::-webkit-scrollbar-track { background: transparent; }
+				::-webkit-scrollbar-thumb { background-color: #3f3f46; border-radius: 10px; }
+			</style>
+		</head>
+		<body class="bg-gray-50 text-gray-800 dark:bg-[#0F0F0F] dark:text-gray-200 antialiased min-h-screen flex w-full overflow-hidden selection:bg-indigo-500 selection:text-white">
+			
+			<!-- Call the Sidebar component here -->
+			@components.Sidebar()
+			
+			<main id="main-content" class="flex-1 flex flex-col h-screen overflow-y-auto relative w-full" hx-history-elt>
+				{ children... }
+			</main>
+			
+			<script>
+				function toggleTheme() {
+					const html = document.documentElement;
+					if (html.classList.contains('dark')) {
+						html.classList.remove('dark');
+						localStorage.setItem('theme', 'light');
+					} else {
+						html.classList.add('dark');
+						localStorage.setItem('theme', 'dark');
+					}
+				}
+			</script>
+		</body>
+	</html>
+}

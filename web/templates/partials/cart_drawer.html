@@ -1,0 +1,95 @@
+<div id="cart-drawer-container">
+    <!-- Dark transparent overlay with blur -->
+    <div id="cart-drawer-overlay" 
+         class="fixed inset-0 bg-black/40 z-40 transition-opacity backdrop-blur-sm" 
+         onclick="closeCart()">
+    </div>
+
+    <!-- The Drawer itself -->
+    <div id="cart-drawer" 
+         class="fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-[#121212] border-l border-gray-200 dark:border-gray-800 shadow-2xl z-50 transform transition-transform duration-300 translate-x-0 flex flex-col">
+        
+        <!-- Header -->
+        <div class="px-6 py-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white tracking-tight">Your Cart</h2>
+            <button onclick="closeCart()" class="text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Cart Items List -->
+        <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            {{ if .Items }}
+                {{ range .Items }}
+                <div class="flex gap-4 border-b border-gray-100 dark:border-gray-800/50 pb-5 last:border-0">
+                    <!-- Item details -->
+                    <div class="flex-1">
+                        <div class="flex justify-between items-start">
+                            <h3 class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ .ProductTitle }}</h3>
+                            <span class="text-sm font-semibold text-gray-900 dark:text-white">${{ printf "%.2f" .ItemTotal }}</span>
+                        </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Size: {{ .Size }} | Qty: {{ .Quantity }}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">{{ .VariantName }}</p>
+                        {{ if .RequiresHumanEdit }}
+                        <p class="text-xs text-indigo-500 mt-1">+ Human Prepress Edit</p>
+                        {{ end }}
+                    </div>
+                </div>
+                {{ end }}
+            {{ else }}
+                <div class="text-center text-gray-500 dark:text-gray-400 mt-12 text-sm">
+                    Your cart is empty.
+                </div>
+            {{ end }}
+        </div>
+
+        <!-- Footer / Checkout Action -->
+        <div class="border-t border-gray-100 dark:border-gray-800 p-6 bg-gray-50 dark:bg-[#0A0A0A]">
+            <div class="flex justify-between text-base font-medium text-gray-900 dark:text-white mb-2">
+                <p>Subtotal</p>
+                <p>${{ printf "%.2f" .Total }}</p>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-6">Shipping and taxes calculated at checkout.</p>
+            
+            <!-- HTMX trigger to load the checkout page, replacing the main content -->
+            <button hx-get="/checkout" 
+                    hx-target="#main-content" 
+                    hx-push-url="true" 
+                    onclick="closeCart()" 
+                    class="w-full bg-black text-white dark:bg-white dark:text-black py-3.5 px-4 rounded-lg font-medium hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors shadow-sm text-sm">
+                Proceed to Checkout
+            </button>
+        </div>
+    </div>
+
+
+    <!-- HTMX Out-of-Bounds Swap to update the Add to Cart button -->
+    <div id="add-to-cart-wrapper" hx-swap-oob="true" class="flex items-center gap-2">
+        <button type="button" onclick="openCart()" class="bg-green-600 hover:bg-green-500 text-white font-medium py-2.5 px-4 md:py-3 md:px-5 rounded-xl transition-all shadow-md hover:shadow-green-500/25 tracking-wide outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 cursor-pointer text-xs md:text-sm whitespace-nowrap flex-shrink-0 flex items-center gap-1.5">
+            <svg class="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+            In Cart
+        </button>
+        <button type="button" onclick="resetUploadSet()" class="bg-white dark:bg-[#1A1A1A] border border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-300 font-medium py-2.5 px-4 md:py-3 md:px-5 rounded-xl transition-all shadow-sm outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer text-xs md:text-sm whitespace-nowrap flex-shrink-0">
+            Add Another Set
+        </button>
+    </div>
+    <!-- JavaScript to handle smooth closing animation -->
+    <script>
+        function closeCart() {
+            const drawer = document.getElementById('cart-drawer');
+            const overlay = document.getElementById('cart-drawer-overlay');
+            
+            drawer.classList.remove('translate-x-0');
+            drawer.classList.add('translate-x-full');
+            overlay.classList.add('opacity-0');
+            
+            // HIDE it instead of removing it, so "In Cart" can instantly reopen it
+            setTimeout(() => {
+                const container = document.getElementById('cart-drawer-container');
+                if (container) container.classList.add('hidden');
+            }, 300);
+        }
+    </script>
+</div>

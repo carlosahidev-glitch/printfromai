@@ -823,7 +823,6 @@ templ ProductContent(product models.Product) {
 			document.getElementById(`${type}-file-input`).click();
 		};
 
-
 window.handleFileUpload = async function(event, type) {
     const file = event.target.files[0];
     if (!file) return;
@@ -836,33 +835,59 @@ window.handleFileUpload = async function(event, type) {
     idleBtn.classList.add('pointer-events-none');
 
     try {
-        // 2. Fetch Presigned URL from Go
+        // 2. Ensure Firebase Token exists (Wait up to 3 seconds if initializing)
+        let token = window.firebaseToken;
+        if (!token) {
+            let retries = 0;
+            while (!window.firebaseToken && retries < 30) {
+                await new Promise(r => setTimeout(r, 100));
+                retries++;
+            }
+            token = window.firebaseToken;
+        }
+
         const headers = {};
-        if (window.firebaseToken) headers['Authorization'] = 'Bearer ' + window.firebaseToken;
-        
+        if (token) {
+            headers['Authorization'] = 'Bearer ' + token;
+        }
+
+        // 3. Request presigned URL from Go backend
         const res = await fetch(`/api/upload-url?filename=${encodeURIComponent(file.name)}`, { headers });
-        if (!res.ok) throw new Error("Failed to secure upload URL");
+        
+        if (!res.ok) {
+            const errText = await res.text();
+            console.error(`Backend upload-url error (${res.status}):`, errText);
+            throw new Error(`Server returned status ${res.status}. Check backend logs.`);
+        }
+
         const data = await res.json();
 
-        // 3. Upload directly to Google Cloud Storage
+        // 4. Upload binary to Google Cloud Storage
         const uploadRes = await fetch(data.url, {
             method: 'PUT',
-            body: file,
-            headers: { 'Content-Type': 'application/octet-stream' }
+            headers: {
+                'Content-Type': 'application/octet-stream'
+            },
+            body: file
         });
-        if (!uploadRes.ok) throw new Error("Cloud Storage rejected the file");
 
-        // 4. Save GCS Path to the hidden form input
+        if (!uploadRes.ok) {
+            const gcsErr = await uploadRes.text();
+            console.error(`GCS rejection (${uploadRes.status}):`, gcsErr);
+            throw new Error("Cloud Storage rejected the file upload.");
+        }
+
+        // 5. Store GCS path in hidden form input
         document.getElementById(`${type}-gcs-path`).value = data.objectName;
 
-        // 5. Render Local Preview UI
+        // 6. Update local preview UI
         const objectUrl = URL.createObjectURL(file);
         const isPDF = file.name.toLowerCase().endsWith('.pdf');
         const isZIP = file.name.toLowerCase().endsWith('.zip');
         
         let iconSrc = objectUrl;
-        if(isPDF) iconSrc = 'https://placehold.co/100x100/4F46E5/ffffff?text=PDF';
-        if(isZIP) iconSrc = 'https://placehold.co/100x100/4F46E5/ffffff?text=ZIP';
+        if (isPDF) iconSrc = 'https://placehold.co/100x100/4F46E5/ffffff?text=PDF';
+        if (isZIP) iconSrc = 'https://placehold.co/100x100/4F46E5/ffffff?text=ZIP';
 
         idleBtn.classList.add('hidden');
         idleBtn.classList.remove('flex');
@@ -884,13 +909,14 @@ window.handleFileUpload = async function(event, type) {
             calculatePrice();
         }
     } catch (err) {
-        console.error("Upload Error:", err);
-        alert("Upload failed. Please check your connection and try again.");
+        console.error("[Upload Debug] Error:", err);
+        alert(`Upload failed: ${err.message}`);
     } finally {
         idleBtn.innerHTML = originalBtnHTML;
         idleBtn.classList.remove('pointer-events-none');
     }
 };
+
 		window.removeFile = function(event, type) {
 			if (event) event.stopPropagation();
 			
@@ -923,6 +949,10 @@ window.handleFileUpload = async function(event, type) {
 			btnElement.classList.remove('border-transparent');
 			btnElement.classList.add('border-indigo-500');
 		};
+
+
+
+
 // Syncs the local preview images into the cart drawer
 window.syncCartPreviews = function() {
     const frontUploadImg = document.getElementById('front-preview-img');

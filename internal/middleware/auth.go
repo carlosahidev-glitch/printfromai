@@ -46,6 +46,14 @@ func RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// GetUID retrieves the verified Firebase UID injected into the request context by RequireAuth middleware.
+func GetUID(r *http.Request) string {
+	if uid, ok := r.Context().Value(UserUIDKey).(string); ok {
+		return uid
+	}
+	return ""
+}
+
 // handleUnauthorized sends the appropriate redirect based on the request type.
 func handleUnauthorized(w http.ResponseWriter, r *http.Request) {
 	isHTMX := r.Header.Get("HX-Request") == "true"

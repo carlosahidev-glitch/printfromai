@@ -36,12 +36,17 @@ templ ProductContent(product models.Product) {
 		<img id="zoomed-image" src="" alt="Zoomed Preview" class="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl" />
 	</div>
 
-<!-- Hidden File Inputs for real uploading -->
-<input type="file" id="front-file-input" name="front_file" form="checkout-form" class="hidden" accept="image/*,.pdf" onchange="handleFileUpload(event, 'front')" aria-hidden="true" />
-<input type="file" id="back-file-input" name="back_file" form="checkout-form" class="hidden" accept="image/*,.pdf" onchange="handleFileUpload(event, 'back')" aria-hidden="true" />
-<input type="file" id="additional-file-input" name="additional_file" form="checkout-form" class="hidden" accept="image/*,.pdf,.zip" onchange="handleFileUpload(event, 'additional')" aria-hidden="true" />
+<!-- Hidden File Inputs (Removed 'name' so HTMX doesn't upload binaries) -->
+<input type="file" id="front-file-input" class="hidden" accept="image/*,.pdf" onchange="handleFileUpload(event, 'front')" aria-hidden="true" />
+<input type="file" id="back-file-input" class="hidden" accept="image/*,.pdf" onchange="handleFileUpload(event, 'back')" aria-hidden="true" />
+<input type="file" id="additional-file-input" class="hidden" accept="image/*,.pdf,.zip" onchange="handleFileUpload(event, 'additional')" aria-hidden="true" />
 
-	<div class="flex flex-col w-full p-4 md:p-8 max-w-7xl mx-auto transition-colors duration-300 overflow-y-auto pb-64 relative">
+<!-- Hidden Text Inputs for GCS Object Paths (These get sent to Go) -->
+<input type="hidden" id="front-gcs-path" name="front_file_path" form="checkout-form" />
+<input type="hidden" id="back-gcs-path" name="back_file_path" form="checkout-form" />
+<input type="hidden" id="additional-gcs-path" name="additional_file_path" form="checkout-form" />
+
+<div class="flex flex-col w-full p-4 md:p-8 max-w-7xl mx-auto transition-colors duration-300 overflow-y-auto pb-64 relative">
 		
 		<!-- Accessible Breadcrumb Navigation -->
 		<nav aria-label="Breadcrumb" class="mb-4 md:mb-6">
@@ -116,7 +121,7 @@ templ ProductContent(product models.Product) {
 				</p>
 
 				<!-- Config Form -->
-<form id="checkout-form" hx-post="/cart/add" hx-encoding="multipart/form-data" hx-swap="beforeend" hx-target="body" class="space-y-8 flex-1">
+<form id="checkout-form" hx-post="/cart/add" hx-swap="beforeend" hx-target="body" class="space-y-8 flex-1">
 					<input type="hidden" name="product" value={ product.Slug } />
 					<input type="hidden" id="has-back-design" name="has_back_design" value="false" />
 					if len(product.Sizes) > 0 {
@@ -818,43 +823,79 @@ templ ProductContent(product models.Product) {
 			document.getElementById(`${type}-file-input`).click();
 		};
 
-		window.handleFileUpload = function(event, type) {
-			const file = event.target.files[0];
-			if (!file) return;
 
-			const objectUrl = URL.createObjectURL(file);
-			const isPDF = file.name.toLowerCase().endsWith('.pdf');
-			const isZIP = file.name.toLowerCase().endsWith('.zip');
-			
-			let iconSrc = objectUrl;
-			if(isPDF) iconSrc = 'https://placehold.co/100x100/4F46E5/ffffff?text=PDF';
-			if(isZIP) iconSrc = 'https://placehold.co/100x100/4F46E5/ffffff?text=ZIP';
+window.handleFileUpload = async function(event, type) {
+    const file = event.target.files[0];
+    if (!file) return;
 
-			document.getElementById(`${type}-upload-idle`).classList.add('hidden');
-			document.getElementById(`${type}-upload-idle`).classList.remove('flex');
-			
-			const previewContainer = document.getElementById(`${type}-upload-preview`);
-			previewContainer.classList.remove('hidden');
-			previewContainer.classList.add('flex');
-			
-			const imgEl = document.getElementById(`${type}-preview-img`);
-			imgEl.src = iconSrc;
-			if (!isPDF && !isZIP) imgEl.setAttribute('data-original-url', objectUrl);
-			
-			document.getElementById(`${type}-filename`).textContent = file.name;
+    const idleBtn = document.getElementById(`${type}-upload-idle`);
+    const originalBtnHTML = idleBtn.innerHTML;
 
-			if (type === 'back') {
-				isDoubleSided = true;
-				document.getElementById('has-back-design').value = "true";
-				document.getElementById('back-add-idle').classList.add('hidden');
-				calculatePrice();
-			}
-		};
+    // 1. Show Uploading UI State
+    idleBtn.innerHTML = `<svg class="animate-spin w-4 h-4 md:w-5 md:h-5 text-indigo-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="text-[9px] md:text-[10px] font-medium text-indigo-500 mt-0.5">Uploading...</span>`;
+    idleBtn.classList.add('pointer-events-none');
 
+    try {
+        // 2. Fetch Presigned URL from Go
+        const headers = {};
+        if (window.firebaseToken) headers['Authorization'] = 'Bearer ' + window.firebaseToken;
+        
+        const res = await fetch(`/api/upload-url?filename=${encodeURIComponent(file.name)}`, { headers });
+        if (!res.ok) throw new Error("Failed to secure upload URL");
+        const data = await res.json();
+
+        // 3. Upload directly to Google Cloud Storage
+        const uploadRes = await fetch(data.url, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': 'application/octet-stream' }
+        });
+        if (!uploadRes.ok) throw new Error("Cloud Storage rejected the file");
+
+        // 4. Save GCS Path to the hidden form input
+        document.getElementById(`${type}-gcs-path`).value = data.objectName;
+
+        // 5. Render Local Preview UI
+        const objectUrl = URL.createObjectURL(file);
+        const isPDF = file.name.toLowerCase().endsWith('.pdf');
+        const isZIP = file.name.toLowerCase().endsWith('.zip');
+        
+        let iconSrc = objectUrl;
+        if(isPDF) iconSrc = 'https://placehold.co/100x100/4F46E5/ffffff?text=PDF';
+        if(isZIP) iconSrc = 'https://placehold.co/100x100/4F46E5/ffffff?text=ZIP';
+
+        idleBtn.classList.add('hidden');
+        idleBtn.classList.remove('flex');
+        
+        const previewContainer = document.getElementById(`${type}-upload-preview`);
+        previewContainer.classList.remove('hidden');
+        previewContainer.classList.add('flex');
+        
+        const imgEl = document.getElementById(`${type}-preview-img`);
+        imgEl.src = iconSrc;
+        if (!isPDF && !isZIP) imgEl.setAttribute('data-original-url', objectUrl);
+        
+        document.getElementById(`${type}-filename`).textContent = file.name;
+
+        if (type === 'back') {
+            isDoubleSided = true;
+            document.getElementById('has-back-design').value = "true";
+            document.getElementById('back-add-idle').classList.add('hidden');
+            calculatePrice();
+        }
+    } catch (err) {
+        console.error("Upload Error:", err);
+        alert("Upload failed. Please check your connection and try again.");
+    } finally {
+        idleBtn.innerHTML = originalBtnHTML;
+        idleBtn.classList.remove('pointer-events-none');
+    }
+};
 		window.removeFile = function(event, type) {
 			if (event) event.stopPropagation();
 			
 			document.getElementById(`${type}-file-input`).value = '';
+			document.getElementById(`${type}-gcs-path`).value = ''; 
 			document.getElementById(`${type}-upload-preview`).classList.add('hidden');
 			document.getElementById(`${type}-upload-preview`).classList.remove('flex');
 			
@@ -882,71 +923,96 @@ templ ProductContent(product models.Product) {
 			btnElement.classList.remove('border-transparent');
 			btnElement.classList.add('border-indigo-500');
 		};
-// Opens the cart drawer (instantly if in DOM, or fetches via HTMX if not)
-        window.openCart = function() {
-            const existingCart = document.getElementById('cart-drawer-container');
-            
-            if (existingCart) {
-                // 1. Unhide the container instantly
-                existingCart.classList.remove('hidden');
-                
-                // 2. Trigger the slide-in animation
-                setTimeout(() => {
-                    document.getElementById('cart-drawer').classList.remove('translate-x-full');
-                    document.getElementById('cart-drawer').classList.add('translate-x-0');
-                    document.getElementById('cart-drawer-overlay').classList.remove('opacity-0');
-                }, 10);
-            } else {
-                // Fetch from server if not in DOM (e.g. page refresh)
-                htmx.ajax('GET', '/cart', {target: 'body', swap: 'beforeend'});
-            }
-        };
+// Syncs the local preview images into the cart drawer
+window.syncCartPreviews = function() {
+    const frontUploadImg = document.getElementById('front-preview-img');
+    const cartFrontImg = document.getElementById('cart-thumbnail-front');
+    
+    // If the upload preview exists and isn't a placeholder, copy its source
+    if (frontUploadImg && cartFrontImg && !frontUploadImg.src.includes('placehold.co')) {
+        cartFrontImg.src = frontUploadImg.src;
+    }
+};
 
-        // Resets the UI so the user can upload a completely new set of designs
-        window.resetUploadSet = function() {
-            // 1. Clear hidden file inputs
-            document.getElementById('front-file-input').value = '';
-            document.getElementById('back-file-input').value = '';
-            document.getElementById('additional-file-input').value = '';
-            
-            // 2. Hide previews & show idle buttons
-            ['front', 'back', 'additional'].forEach(type => {
-                const preview = document.getElementById(`${type}-upload-preview`);
-                if (preview) {
-                    preview.classList.add('hidden');
-                    preview.classList.remove('flex');
-                }
+// Opens the cart drawer
+window.openCart = function() {
+    const existingCart = document.getElementById('cart-drawer-container');
+    
+    if (existingCart) {
+        // If it's already in the DOM, just unhide and sync
+        existingCart.classList.remove('hidden');
+        syncCartPreviews(); 
+        
+        setTimeout(() => {
+            document.getElementById('cart-drawer').classList.remove('translate-x-full');
+            document.getElementById('cart-drawer').classList.add('translate-x-0');
+            document.getElementById('cart-drawer-overlay').classList.remove('opacity-0');
+        }, 10);
+    } else {
+        // Fetch from server if not in DOM
+        htmx.ajax('GET', '/cart', {target: 'body', swap: 'beforeend'}).then(() => {
+            // Wait for the browser to finish painting the new DOM elements
+            requestAnimationFrame(() => {
+                setTimeout(syncCartPreviews, 100);
             });
-            
-            document.getElementById('front-upload-idle').classList.remove('hidden');
-            document.getElementById('front-upload-idle').classList.add('flex');
-            
-            document.getElementById('additional-upload-idle').classList.remove('hidden');
-            document.getElementById('additional-upload-idle').classList.add('flex');
+        });
+    }
+};
 
-            // 3. Reset Back Design state
-            isDoubleSided = false;
-            document.getElementById('has-back-design').value = "false";
-            document.getElementById('back-upload-idle').classList.add('hidden');
-            document.getElementById('back-upload-idle').classList.remove('flex');
-            document.getElementById('back-add-idle').classList.remove('hidden');
-            
-            // 4. Restore the original Add To Cart button
-            const wrapper = document.getElementById('add-to-cart-wrapper');
-            if (wrapper) {
-                wrapper.innerHTML = `
-                    <button type="submit" form="checkout-form" id="add-to-cart-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 px-4 md:py-3 md:px-6 rounded-xl transition-all shadow-md hover:shadow-indigo-500/25 tracking-wide outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer text-xs md:text-sm whitespace-nowrap flex-shrink-0">
-                        Add To Cart
-                    </button>
-                `;
-                // Re-process the new HTML with HTMX so it knows about the form submission
-                htmx.process(wrapper); 
-            }
+// Global safety net: Anytime HTMX swaps content, check if we need to sync the cart
+document.body.addEventListener('htmx:afterSettle', function(evt) {
+    if (document.getElementById('cart-thumbnail-front')) {
+        syncCartPreviews();
+    }
+});
 
-            // 5. Recalculate base price
-            calculatePrice();
-        };
+window.resetUploadSet = function() {
+    // 1. Clear hidden file inputs and GCS paths dynamically
+    ['front', 'back', 'additional'].forEach(type => {
+        const fileInput = document.getElementById(`${type}-file-input`);
+        if (fileInput) fileInput.value = '';
+        
+        const gcsInput = document.getElementById(`${type}-gcs-path`);
+        if (gcsInput) gcsInput.value = '';
+    });
 
+    // 2. Hide previews & show idle buttons
+    ['front', 'back', 'additional'].forEach(type => {
+        const preview = document.getElementById(`${type}-upload-preview`);
+        if (preview) {
+            preview.classList.add('hidden');
+            preview.classList.remove('flex');
+        }
+    });
+
+    document.getElementById('front-upload-idle').classList.remove('hidden');
+    document.getElementById('front-upload-idle').classList.add('flex');
+
+    document.getElementById('additional-upload-idle').classList.remove('hidden');
+    document.getElementById('additional-upload-idle').classList.add('flex');
+
+    // 3. Reset Back Design state
+    isDoubleSided = false;
+    document.getElementById('has-back-design').value = "false";
+    document.getElementById('back-upload-idle').classList.add('hidden');
+    document.getElementById('back-upload-idle').classList.remove('flex');
+    document.getElementById('back-add-idle').classList.remove('hidden');
+
+    // 4. Restore the original Add To Cart button
+    const wrapper = document.getElementById('add-to-cart-wrapper');
+    if (wrapper) {
+        wrapper.innerHTML = `
+            <button type="submit" form="checkout-form" id="add-to-cart-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 px-4 md:py-3 md:px-6 rounded-xl transition-all shadow-md hover:shadow-indigo-500/25 tracking-wide outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer text-xs md:text-sm whitespace-nowrap flex-shrink-0">
+                Add To Cart
+            </button>
+        `;
+        // Re-process the new HTML with HTMX so it knows about the form submission
+        htmx.process(wrapper); 
+    }
+
+    // 5. Recalculate base price
+    calculatePrice();
+};
 		// Kickoff initialization
 		setTimeout(initPrintCalculator, 10);
 
@@ -954,7 +1020,7 @@ templ ProductContent(product models.Product) {
         document.body.addEventListener('htmx:confirm', function(event) {
             // Only intercept if it's our checkout form
             if (event.detail.elt.id === 'checkout-form') {
-                const frontFile = document.getElementById('front-file-input').value;
+              const frontFile = document.getElementById('front-gcs-path').value;
                 // Strictly targets the FRONT button in your floating menu
                 const uploadZone = document.getElementById('front-upload-idle'); 
                 

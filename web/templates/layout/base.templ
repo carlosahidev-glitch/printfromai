@@ -6,56 +6,102 @@ import "github.com/printfromai/core/web/templates/components"
 templ Base(title string) {
 	<!DOCTYPE html>
 	<html lang="en" class="dark">
-		<head>
-			<meta charset="UTF-8"/>
-			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-			<title>{ title }</title>
+	<head>
+		<meta charset="UTF-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<title>{ title }</title>
+		
+		<script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+		<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+		
+		<link rel="preconnect" href="https://fonts.googleapis.com"/>
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
+		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+		
+		<script>
+			if (localStorage.getItem('theme') === 'light') {
+				document.documentElement.classList.remove('dark');
+			} else {
+				document.documentElement.classList.add('dark');
+				localStorage.setItem('theme', 'dark');
+			}
+		</script>
+		
+		<style>
+			body { font-family: 'Inter', sans-serif; }
+			html { transition: background-color 0.3s ease, color 0.3s ease; }
+			::-webkit-scrollbar { width: 6px; }
+			::-webkit-scrollbar-track { background: transparent; }
+			::-webkit-scrollbar-thumb { background-color: #3f3f46; border-radius: 10px; }
+		</style>
+	</head>
+	<body class="bg-gray-50 text-gray-800 dark:bg-[#0F0F0F] dark:text-gray-200 antialiased min-h-screen flex w-full overflow-hidden selection:bg-indigo-500 selection:text-white">
+		
+		<!-- Call the Sidebar component here -->
+		@components.Sidebar()
+		
+		<main id="main-content" class="flex-1 flex flex-col h-screen overflow-y-auto relative w-full" hx-history-elt>
+			{ children... }
+		</main>
+
+		<!-- Firebase SDKs (Modular v10) for Anonymous Auth & JWT Management -->
+		<script type="module">
+			import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+			import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+			// TODO: Replace with your actual Firebase Project Config from the Firebase Console
+			const firebaseConfig = {
+  apiKey: "AIzaSyCgg4Ej7T9eZJLL7fZLVMRKSi0zL8DJCCk",
+  authDomain: "printfromai.firebaseapp.com",
+  projectId: "printfromai",
+  storageBucket: "printfromai.firebasestorage.app",
+  messagingSenderId: "249197200856",
+  appId: "1:249197200856:web:f577216e5c5b699cf65ead",
+  measurementId: "G-Z34RRW2ZR1"
+			};
+
+			const app = initializeApp(firebaseConfig);
+			const auth = getAuth(app);
+
+			// 1. Silently authenticate guests in the background immediately on load
+			signInAnonymously(auth).catch((error) => {
+				console.error("PrintFromAI: Firebase Auth Error", error);
+			});
+
+			// 2. Cache the JWT Token globally for zero-latency HTMX requests
+			window.firebaseToken = "";
 			
-			<script src="https://unpkg.com/@tailwindcss/browser@4"></script>
-			<script src="https://unpkg.com/htmx.org@1.9.10"></script>
-			
-			<link rel="preconnect" href="https://fonts.googleapis.com"/>
-			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
-			<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-			
-			<script>
-				if (localStorage.getItem('theme') === 'light') {
-					document.documentElement.classList.remove('dark');
+			onAuthStateChanged(auth, async (user) => {
+				if (user) {
+					window.firebaseToken = await user.getIdToken();
+					
+					// Refresh token every 10 minutes to prevent expiration during long design sessions
+					setInterval(async () => {
+						window.firebaseToken = await user.getIdToken(true);
+					}, 10 * 60 * 1000);
+				}
+			});
+
+			// 3. HTMX Interceptor: Inject the secure token into every backend request
+			document.body.addEventListener('htmx:configRequest', function(evt) {
+				if (window.firebaseToken) {
+					evt.detail.headers['Authorization'] = 'Bearer ' + window.firebaseToken;
+				}
+			});
+		</script>
+
+		<script>
+			function toggleTheme() {
+				const html = document.documentElement;
+				if (html.classList.contains('dark')) {
+					html.classList.remove('dark');
+					localStorage.setItem('theme', 'light');
 				} else {
-					document.documentElement.classList.add('dark');
+					html.classList.add('dark');
 					localStorage.setItem('theme', 'dark');
 				}
-			</script>
-			
-			<style>
-				body { font-family: 'Inter', sans-serif; }
-				html { transition: background-color 0.3s ease, color 0.3s ease; }
-				::-webkit-scrollbar { width: 6px; }
-				::-webkit-scrollbar-track { background: transparent; }
-				::-webkit-scrollbar-thumb { background-color: #3f3f46; border-radius: 10px; }
-			</style>
-		</head>
-		<body class="bg-gray-50 text-gray-800 dark:bg-[#0F0F0F] dark:text-gray-200 antialiased min-h-screen flex w-full overflow-hidden selection:bg-indigo-500 selection:text-white">
-			
-			<!-- Call the Sidebar component here -->
-			@components.Sidebar()
-			
-			<main id="main-content" class="flex-1 flex flex-col h-screen overflow-y-auto relative w-full" hx-history-elt>
-				{ children... }
-			</main>
-			
-			<script>
-				function toggleTheme() {
-					const html = document.documentElement;
-					if (html.classList.contains('dark')) {
-						html.classList.remove('dark');
-						localStorage.setItem('theme', 'light');
-					} else {
-						html.classList.add('dark');
-						localStorage.setItem('theme', 'dark');
-					}
-				}
-			</script>
-		</body>
+			}
+		</script>
+	</body>
 	</html>
 }

@@ -5,6 +5,7 @@ import (
 	// We will uncomment this import in our next step once we create our handlers
 
 	"github.com/printfromai/core/internal/handlers"
+	"github.com/printfromai/core/internal/middleware"
 )
 
 // NewRouter initializes the main HTTP multiplexer and registers all routes.
@@ -29,6 +30,14 @@ func NewRouter() *http.ServeMux {
 	// E-Commerce & Cart Routes
 	mux.HandleFunc("GET /cart", handlers.GetCart)
 	mux.HandleFunc("POST /cart/add", handlers.AddToCart)
+
+	// Add this under your HTMX Dynamic Endpoints:
+	mux.HandleFunc("GET /api/upload-url", middleware.RequireAuth(handlers.GetUploadURL))
+
+	mux.HandleFunc("GET /login", handlers.LoginView)
+
+	mux.HandleFunc("GET /checkout", middleware.RequireAuth(handlers.CheckoutView))
+	mux.HandleFunc("POST /checkout/process", middleware.RequireAuth(handlers.ProcessCheckout))
 
 	// 4. HTMX Dynamic Endpoints (The Magic)
 	// HTMX on the frontend will call these via AJAX.

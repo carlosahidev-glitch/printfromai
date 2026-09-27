@@ -1,0 +1,170 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/printfromai/core/internal/models"
+	"github.com/printfromai/core/web/templates/layout"
+)
+
+// CheckoutIndex handles the HTMX conditional rendering.
+templ CheckoutIndex(cart models.Cart, isHTMX bool) {
+	if isHTMX {
+		@CheckoutContent(cart)
+	} else {
+		@layout.Base("Secure Checkout | PrintFromAI") {
+			@CheckoutContent(cart)
+		}
+	}
+}
+
+// CheckoutContent is the high-converting, two-column checkout interface.
+templ CheckoutContent(cart models.Cart) {
+	<div class="flex flex-col lg:flex-row w-full max-w-7xl mx-auto h-full transition-colors duration-300">
+		
+		<!-- Left Column: Shipping & Payment Forms -->
+		<div class="flex-1 p-6 md:p-12 lg:p-16 lg:pr-24 lg:border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0F0F0F] overflow-y-auto">
+			<h1 class="text-2xl font-medium text-gray-900 dark:text-gray-100 tracking-tight mb-8">Checkout</h1>
+			
+			<!-- Shipping Information Form -->
+			<!-- HTMX intercepts the submission, sends the data to Go, and swaps the response into #payment-container -->
+			<form id="shipping-form" hx-post="/checkout/process" hx-target="#payment-container" hx-swap="innerHTML" class="space-y-6">
+				
+				<div class="space-y-4">
+					<h2 class="text-lg font-medium text-gray-900 dark:text-gray-100 tracking-tight">Contact Information</h2>
+					<div>
+						<label for="email" class="sr-only">Email</label>
+						<input type="email" id="email" name="email" required placeholder="Email address for order updates" class="w-full p-3.5 bg-gray-50 dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-gray-200 text-sm shadow-sm transition-colors" />
+					</div>
+				</div>
+
+				<div class="space-y-4 pt-6">
+					<h2 class="text-lg font-medium text-gray-900 dark:text-gray-100 tracking-tight">Shipping Address</h2>
+					<div class="grid grid-cols-2 gap-4">
+						<input type="text" name="first_name" required placeholder="First name" class="col-span-1 p-3.5 bg-gray-50 dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-gray-200 text-sm shadow-sm" />
+						<input type="text" name="last_name" required placeholder="Last name" class="col-span-1 p-3.5 bg-gray-50 dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-gray-200 text-sm shadow-sm" />
+						<input type="text" name="address" required placeholder="Address" class="col-span-2 p-3.5 bg-gray-50 dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-gray-200 text-sm shadow-sm" />
+						<input type="text" name="city" required placeholder="City" class="col-span-2 md:col-span-1 p-3.5 bg-gray-50 dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-gray-200 text-sm shadow-sm" />
+						<input type="text" name="state" required placeholder="State / Province" class="col-span-1 p-3.5 bg-gray-50 dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-gray-200 text-sm shadow-sm" />
+						<input type="text" name="zip" required placeholder="ZIP / Postal code" class="col-span-1 p-3.5 bg-gray-50 dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:text-gray-200 text-sm shadow-sm" />
+					</div>
+				</div>
+
+				<button type="submit" id="continue-to-payment-btn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-4 px-6 rounded-xl transition-all shadow-md tracking-wide outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 mt-6 cursor-pointer">
+					Continue to Payment
+				</button>
+			</form>
+
+			<!-- Payment Container: HTMX will inject the Stripe Elements UI here -->
+			<div id="payment-container" class="mt-8 pt-8 border-t border-gray-200 dark:border-gray-800 empty:hidden"></div>
+		</div>
+
+		<!-- Right Column: Order Summary (Sticky) -->
+		<div class="w-full lg:w-[450px] bg-gray-50 dark:bg-[#111111] p-6 md:p-12 lg:p-16 overflow-y-auto">
+			<h2 class="text-lg font-medium text-gray-900 dark:text-gray-100 tracking-tight mb-6">Order Summary</h2>
+			
+			<div class="space-y-6 mb-8">
+				for _, item := range cart.Items {
+					<div class="flex items-center gap-4">
+						<div class="w-16 h-16 bg-white dark:bg-[#1A1A1A] rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden relative shadow-sm flex-shrink-0">
+							<img src={ item.FrontFileURL } class="w-full h-full object-cover" alt="" onerror="this.src='https://placehold.co/100x100/4F46E5/ffffff?text=PDF'" />
+							<span class="absolute -top-2 -right-2 bg-gray-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full z-10">{ fmt.Sprint(item.Quantity) }</span>
+						</div>
+						<div class="flex-1">
+							<h3 class="text-sm font-medium text-gray-900 dark:text-gray-100">{ item.ProductTitle }</h3>
+							<p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{ item.VariantName } &bull; { item.Size }</p>
+						</div>
+						<span class="text-sm font-medium text-gray-900 dark:text-gray-100">${ fmt.Sprintf("%.2f", item.ItemTotal) }</span>
+					</div>
+				}
+			</div>
+
+			<div class="space-y-3 pt-6 border-t border-gray-200 dark:border-gray-800 text-sm">
+				<div class="flex justify-between text-gray-600 dark:text-gray-400">
+					<span>Subtotal</span>
+					<span>${ fmt.Sprintf("%.2f", cart.Subtotal) }</span>
+				</div>
+				<div class="flex justify-between text-gray-600 dark:text-gray-400">
+					<span>Shipping</span>
+					<span class="text-green-600 dark:text-green-400 font-medium">Free</span>
+				</div>
+				<div class="flex justify-between text-lg font-medium text-gray-900 dark:text-gray-100 pt-3 border-t border-gray-200 dark:border-gray-800">
+					<span>Total</span>
+					<span>${ fmt.Sprintf("%.2f", cart.Total) }</span>
+				</div>
+			</div>
+		</div>
+	</div>
+}
+
+// StripePaymentPartial is injected dynamically after the shipping form is submitted.
+templ StripePaymentPartial(clientSecret string) {
+	<div class="animate-fade-in-up">
+		<h2 class="text-lg font-medium text-gray-900 dark:text-gray-100 tracking-tight mb-4">Payment Information</h2>
+		<p class="text-xs text-gray-500 dark:text-gray-400 mb-6 font-light">All transactions are secure and encrypted.</p>
+		
+		<form id="payment-form" class="space-y-6">
+			<!-- Stripe securely mounts the credit card iframe inside this div -->
+			<div id="payment-element" class="p-4 bg-white dark:bg-[#151515] border border-gray-200 dark:border-gray-800 rounded-xl min-h-[150px]"></div>
+			
+			<!-- Error Messages -->
+			<div id="payment-message" class="hidden text-sm text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4"></div>
+			
+			<button id="submit-payment" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-4 px-6 rounded-xl transition-all shadow-md tracking-wide outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer flex items-center justify-center gap-2">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+				Pay Now
+			</button>
+		</form>
+
+		<!-- Stripe.js Initialization -->
+		<script src="https://js.stripe.com/v3/"></script>
+		<script>
+			// Hide the shipping form button since we are now entering payment
+			document.getElementById('continue-to-payment-btn').classList.add('hidden');
+			document.getElementById('shipping-form').classList.add('opacity-50', 'pointer-events-none');
+
+			// Initialize Stripe Elements
+			// TODO: Replace with your actual Stripe Publishable Key
+			const stripe = Stripe('pk_test_YOUR_PUBLISHABLE_KEY');
+			const clientSecret = "{ clientSecret }";
+
+			const appearance = {
+				theme: document.documentElement.classList.contains('dark') ? 'night' : 'stripe',
+				variables: {
+					colorPrimary: '#4F46E5', // Indigo-600
+					colorBackground: 'transparent',
+					colorText: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#111827',
+				}
+			};
+
+			const elements = stripe.elements({ appearance, clientSecret });
+			const paymentElement = elements.create("payment");
+			paymentElement.mount("#payment-element");
+
+			// Handle Form Submission
+			const form = document.getElementById("payment-form");
+			form.addEventListener("submit", async (e) => {
+				e.preventDefault();
+				const submitBtn = document.getElementById("submit-payment");
+				submitBtn.innerHTML = "Processing...";
+				submitBtn.classList.add("opacity-75", "pointer-events-none");
+
+				const { error } = await stripe.confirmPayment({
+					elements,
+					confirmParams: {
+						// Make sure your Go webhook handles /checkout/success
+						return_url: window.location.origin + "/checkout/success",
+					},
+				});
+
+				if (error) {
+					const messageContainer = document.getElementById("payment-message");
+					messageContainer.classList.remove("hidden");
+					messageContainer.textContent = error.message;
+					
+					submitBtn.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg> Pay Now`;
+					submitBtn.classList.remove("opacity-75", "pointer-events-none");
+				}
+			});
+		</script>
+	</div>
+}
